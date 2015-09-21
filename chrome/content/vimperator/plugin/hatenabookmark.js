@@ -161,6 +161,9 @@ liberator.plugins.hBookmark = (function() {
             if (args['-edit']) {
                 plugin.showPanel(args['-edit']);
             } else {
+                if (args['-tag']) {
+                  args.string = args.string.match(/(\\\s|[^\s])+$/)[0];
+                }
                 if (openTab) {
                     let url = plugin.command.genURL(args.string, args.bang);
                     bangFunctions.openNewTab(url);
@@ -226,9 +229,19 @@ liberator.plugins.hBookmark = (function() {
              let limit = liberator.globalVariables.hBookmark_search_limit || 10;
              let maxLimit = liberator.globalVariables.hBookmark_search_max_limit || 100;
 
+             // タグ絞込条件の取得
+             let tag_args = context.value.match(/(-tag|-t)\s((\\\s|[^\s])+)/g);
+             let selected_tags = [];
+             if (tag_args) {
+               selected_tags = tag_args.map(function(e) {
+                 let elms = e.replace(/\\\s/g," ").split(/\s/g).filter(function(_e){return !_e.match(/^-(t|tag)$/)});
+                 return elms.map(function(_e){return _e.split(",")});
+               }).join(",").split(",");
+             }
+
              let completions;
              let method = searchMethod || 'search';
-             let word = context.filter;
+             let word = context.filter + " " + selected_tags.join(" ");
              let offset = 0;
 
              // 検索語がない場合 (全件取得) などは 1 回の検索で全部返す
@@ -310,6 +323,46 @@ liberator.plugins.hBookmark = (function() {
     };
 
     plugin.command.options.options = [
+        [['-tag', '-t'], commands.OPTION_LIST, null,
+          function(context) {
+            // 補完の各行について定義
+            context.keys = {
+              text: "commandline",
+              description: "description",
+              title: "title",
+            };
+            context.process = [
+              function(item, text) { return item.title },
+              function(item, text) { return item.description }
+            ];
+
+            // 関連タグ取得(ブックマーク数順)
+            const search_tag_max_limit = 10000; // タグ取得上限数
+            let related_tags = context.filter.split(",");
+            let inputting_tag = related_tags.pop();
+            let res = HatenaBookmark.model('Tag').findRelatedTags(
+                related_tags,
+                search_tag_max_limit).map(
+                  function(tag) {
+                    return {
+                      "title": tag.name,
+                      "description": tag.count,
+                      "commandline": (related_tags.concat(tag.name)).join(",")
+                    }
+                  }
+                ).sort(function(a,b){return a["description"] < b["description"]});
+
+            // 入力に対する補完絞込
+            context.ignoreCase = true;
+            context.compare = CompletionContext.Sort.unsorted;
+            context.filterFunc = function (candidate_items) {
+              return candidate_items.filter(function(item) {
+                return (new RegExp(inputting_tag)).test(item.text);
+              });
+            };
+            return res;
+          }
+        ],
         [['-edit', '-e'], commands.OPTION_STRING],
         [['-sync'], commands.OPTION_NOARG],
     ];
