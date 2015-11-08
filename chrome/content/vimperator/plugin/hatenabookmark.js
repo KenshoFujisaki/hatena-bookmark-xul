@@ -357,7 +357,9 @@ liberator.plugins.hBookmark = (function() {
             context.compare = CompletionContext.Sort.unsorted;
             context.filterFunc = function (candidate_items) {
               return candidate_items.filter(function(item) {
-                return (new RegExp(inputting_tag)).test(item.text);
+                let filter_regex = new RegExp(inputting_tag.replace(/[\s_\-\.]/g, ""), "i");
+                let target_tag = item.text.replace(/[\s_\-\.]/g, "");
+                return filter_regex.test(target_tag);
               });
             };
             return res;
